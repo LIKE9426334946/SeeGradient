@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="拖动神经网络的参数，实时观察预测、MSE 损失与反向传播梯度。">
+  <title>SeeGradient · 看见梯度</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="SeeGradient 首页"><img src="/favicon.svg" width="34" height="34" alt=""><span>SeeGradient<span class="brand-note">看见梯度</span></span></a>
+    <div class="top-actions"><span id="save-status" class="save-status">准备实验</span><a class="quiet-button" href="#guide">使用说明</a><button class="icon-button" id="theme-toggle" type="button" aria-label="切换深色模式" title="切换深色模式">◐</button></div>
+  </header>
+  <div class="app-layout">
+    <aside class="sidebar">
+      <div class="section-eyebrow">EXPERIMENT SETUP</div>
+      <h1>搭一个小网络</h1>
+      <p class="muted sidebar-intro">从几个数字开始，探索每个参数如何影响损失。</p>
+      <form id="config-form" novalidate>
+        <div class="field-heading"><label for="input-x">输入 X</label><span class="shape-badge" id="x-shape">2 × 2</span></div>
+        <textarea id="input-x" rows="3" spellcheck="false" aria-describedby="x-help">1, 2
+2, 1</textarea>
+        <p class="field-help" id="x-help">每行一个样本，数字用逗号或空格分隔。</p>
+        <div class="field-heading"><label for="target-y">目标 Y</label><span class="shape-badge" id="y-shape">2 × 1</span></div>
+        <textarea id="target-y" rows="3" spellcheck="false" aria-describedby="y-help">1
+0</textarea>
+        <p class="field-help" id="y-help">行数与 X 相同；列数决定输出维度。</p>
+        <div class="field-heading"><label for="hidden-layers">隐藏层形状</label><span class="small muted">最多 4 层</span></div>
+        <input id="hidden-layers" type="text" value="2" placeholder="例如 4, 3" spellcheck="false" aria-describedby="hidden-help">
+        <p class="field-help" id="hidden-help">每层 1–8 个神经元；留空则直接输出。</p>
+        <div class="field-heading"><label for="activation">隐藏层激活函数</label></div>
+        <select id="activation"><option value="tanh">Tanh</option><option value="relu">ReLU</option><option value="sigmoid">Sigmoid</option><option value="linear">Linear · 无激活</option></select>
+        <label class="toggle-field"><span>使用偏置 b</span><input id="use-bias" type="checkbox" checked><span class="toggle-visual" aria-hidden="true"></span></label>
+        <p id="config-message" class="config-message" role="status">输出层使用 Linear，损失使用 MSE。</p>
+        <button class="button primary full-width" type="submit">应用网络设置 <span aria-hidden="true">→</span></button>
+      </form>
+      <div class="sidebar-separator"></div>
+      <div class="section-eyebrow">QUICK START</div>
+      <button class="preset" id="demo-button" type="button"><span class="preset-symbol">2 → 2 → 1</span><span>载入入门示例<span class="muted">一层隐藏层 · 两个样本</span></span><span aria-hidden="true">↗</span></button>
+      <button class="preset" id="linear-button" type="button"><span class="preset-symbol">X · W</span><span>纯矩阵乘法<span class="muted">2 × 2 权重 · 无偏置</span></span><span aria-hidden="true">↗</span></button>
+      <div class="sidebar-note"><span class="status-dot"></span><p>计算在浏览器中实时完成。<br>当前实验自动保存在此浏览器。</p></div>
+    </aside>
+    <main id="main-content">
+      <div class="workspace-heading"><div><div class="section-eyebrow">GRADIENT PLAYGROUND</div><h2>让每一次调整，都看得见。</h2><p class="muted">拖动一个参数，看看整个网络如何回应。</p></div><span class="live-pill"><span class="status-dot"></span>实时计算</span></div>
+      <section class="network-strip" aria-label="当前网络结构"><div id="network-flow" class="network-flow"></div><div class="network-caption"><code id="network-equation"></code><span id="parameter-count"></span></div></section>
+      <section class="metrics" aria-label="实时计算结果">
+        <article class="metric loss-metric"><div class="metric-label">均方误差 <span>MSE LOSS</span></div><div id="loss-value" class="metric-number">—</div><div class="metric-foot"><span id="loss-change">调整参数，观察变化</span><span id="loss-warning"></span></div></article>
+        <article class="metric"><div class="metric-label">梯度范数 <span>‖∇L‖₂</span></div><div id="gradient-norm" class="metric-number">—</div><div class="metric-foot">所有可训练参数梯度的整体大小</div></article>
+        <article class="metric steps-metric"><div class="metric-label">训练步数 <span>SGD STEPS</span></div><div id="step-count" class="metric-number">0<span class="number-unit">次</span></div><div class="metric-foot">θ ← θ − η · ∇L</div></article>
+      </section>
+      <section class="training-toolbar" aria-label="训练控制">
+        <div class="button-group"><button class="button primary" id="step-button" type="button"><span aria-hidden="true">↘</span> 单步更新</button><button class="button" id="play-button" type="button" aria-pressed="false"><span aria-hidden="true">▶</span> 连续训练</button></div>
+        <div class="training-settings"><label for="learning-rate">学习率 η</label><input id="learning-rate" type="number" value="0.05" min="0.000001" max="10" step="0.01"><label class="sr-only" for="training-speed">训练速度</label><select id="training-speed" aria-label="训练速度"><option value="800">慢速</option><option value="300" selected>正常</option><option value="100">快速</option></select></div>
+        <div class="utility-actions"><button id="undo-button" class="quiet-button" type="button" disabled title="撤销上一次手动调整或训练">↶ 撤销</button><button id="randomize-button" class="quiet-button" type="button" title="保持输入、目标和形状，重新初始化参数">↻ 重新初始化</button></div>
+      </section>
+      <div id="notice" class="notice" role="alert" hidden></div>
+      <section class="parameter-section" aria-labelledby="parameter-title">
+        <div class="section-title-row"><div><h3 id="parameter-title">参数与梯度</h3><p class="muted small">同一个位置，一边是参数，一边是它对损失的影响。</p></div><div class="tensor-switch" role="group" aria-label="参数类型"><button id="weight-tab" type="button" class="active" aria-pressed="true">权重 W</button><button id="bias-tab" type="button" aria-pressed="false">偏置 b</button></div></div>
+        <div id="layer-tabs" class="layer-tabs" role="group" aria-label="选择网络层"></div>
+        <div class="chart-pair">
+          <article class="chart-card"><div class="chart-heading"><div><span class="tiny-label">PARAMETERS</span><h4 id="weight-title">W₁ <span>2 × 2</span></h4></div><span class="chart-tag">↕ 拖动调整</span></div><div class="chart-scroll"><div class="canvas-container"><canvas id="weight-canvas" tabindex="0" role="group" aria-describedby="drag-help">参数柱状图，请使用下方数值输入框调整。</canvas></div></div><div class="chart-footer"><span><i class="legend-dot positive"></i>正值<i class="legend-dot negative"></i>负值</span><span id="weight-scale">统一刻度 ±1</span></div></article>
+          <article class="chart-card"><div class="chart-heading"><div><span class="tiny-label">GRADIENTS</span><h4 id="gradient-title">∂L / ∂W₁ <span>2 × 2</span></h4></div><span class="chart-tag gradient-tag">自动反向传播</span></div><div class="chart-scroll"><div class="canvas-container"><canvas id="gradient-canvas" tabindex="0" role="group" aria-label="当前参数的梯度柱状图">参数梯度柱状图。</canvas></div></div><div class="chart-footer"><span>与左侧参数一一对应 · 只读</span><span id="gradient-scale">统一刻度 ±1</span></div></article>
+        </div>
+        <p id="drag-help" class="drag-help">拖动柱顶圆点可跨过零线；按住 Shift 精细调整。柱图获得焦点后，← → 选择参数，↑ ↓ 调整数值。</p>
+        <div class="inspector"><div class="selected-parameter"><span class="tiny-label">当前参数</span><label id="selected-label" for="selected-value">W₁[0, 0]</label><input id="selected-value" type="number" step="0.01" min="-1000000" max="1000000"></div><div><span class="tiny-label">当前梯度 ∂L / ∂θ</span><strong id="selected-gradient" class="mono">—</strong><span id="gradient-direction" class="small muted"></span></div><div><span class="tiny-label">下一步参数 θ − η · ∂L/∂θ</span><strong id="next-value" class="mono">—</strong><span class="small muted">按当前学习率计算</span></div><div class="inspector-explanation" id="selected-explanation"></div></div>
+      </section>
+      <div class="bottom-grid">
+        <section class="card output-card"><div class="section-title-row"><h3>预测与目标</h3><span class="shape-badge" id="output-shape">2 × 1</span></div><div class="table-scroll"><table><thead><tr><th>位置</th><th>目标 Y</th><th>预测 Ŷ</th><th>平方误差</th></tr></thead><tbody id="prediction-body"></tbody></table></div><div class="formula-note">L = Σ(Ŷ − Y)² / (样本数 × 输出维度)</div></section>
+        <section class="card history-card"><div class="section-title-row"><h3>损失变化</h3><button id="clear-history" class="quiet-button small" type="button">清空记录</button></div><div class="history-legend"><span class="mono" id="history-last">—</span><span class="small muted">拖动与训练都会记录</span></div><canvas id="history-canvas" role="img" aria-label="最近的 MSE 损失变化曲线"></canvas><div class="chart-footer"><span>最近 240 次记录 · 线性纵轴</span><span>记录顺序 →</span></div></section>
+      </div>
+      <details id="guide" class="guide"><summary>读懂这个实验 <span>参数、梯度与更新方向</span></summary><div class="guide-content"><p><strong>先设置目标。</strong>X 每行是一个样本，Y 每行是对应目标。修改左侧设置后点击“应用网络设置”。只改变数据或激活函数时保留参数；改变网络形状或偏置开关时重新初始化。</p><p><strong>柱子表示一个数。</strong>W 为 2 × 2 时，会按 2 行 2 列显示四根柱子；柱高是当前值，不是频数。零线以上为正、以下为负。点击任意柱子后，也可在“当前参数”中精确输入数值。</p><p><strong>梯度表示局部变化率。</strong>正梯度意味着参数小幅增加通常会使损失增加，负梯度则相反。梯度接近零表示一阶影响很小，并不保证到达最优点。单步更新会同时更新全部参数；较大学习率可能让损失上升。</p><p><strong>矩阵约定。</strong>此处使用 X @ W + b，W 形状为“输入维度 × 输出维度”，与 PyTorch 的 nn.Linear.weight 存储形状互为转置。隐藏层应用所选激活函数；输出层始终为线性层。MSE 对全部样本、全部输出元素取平均。</p><p><strong>保存与重置。</strong>实验保存在当前浏览器的本地存储中，刷新可继续。不会跨浏览器同步；清除浏览器数据会删除实验。载入示例和重新初始化会替换当前参数，可使用“撤销”返回上一次状态。</p></div></details>
+      <footer>SeeGradient <span>一点调整，一点理解。</span><span id="footer-shape"></span></footer>
+    </main>
+  </div>
+  <noscript>SeeGradient 需要启用 JavaScript 才能进行实时计算和显示柱状图。</noscript>
+</body>
+</html>

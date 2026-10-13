@@ -1,0 +1,19 @@
+[Unit]
+Description=SeeGradient neural network gradient playground
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/SeeGradient
+Environment=NODE_ENV=production
+Environment=HOST=127.0.0.1
+Environment=PORT=3048
+ExecStart=/usr/bin/node /opt/SeeGradient/backend/server.js
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
